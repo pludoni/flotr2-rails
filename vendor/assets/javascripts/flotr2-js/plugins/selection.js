@@ -30,6 +30,7 @@ var
 Flotr.addPlugin('selection', {
 
   options: {
+    pinchOnly: null,       // Only select on pinch
     mode: null,            // => one of null, 'x', 'y' or 'xy'
     color: '#B6D9FF',      // => selection box color
     fps: 20                // => frames-per-second
@@ -37,33 +38,46 @@ Flotr.addPlugin('selection', {
 
   callbacks: {
     'flotr:mouseup' : function (event) {
-      if (!this.options.selection || !this.options.selection.mode) return;
-      if (this.selection.interval) clearInterval(this.selection.interval);
 
-      var pointer = this.getEventPosition(event);
-      this.selection.setSelectionPos(this.selection.selection.second, pointer);
-      this.selection.clearSelection();
+      var
+        options = this.options.selection,
+        selection = this.selection,
+        pointer = this.getEventPosition(event);
 
-      if(this.selection.selecting && this.selection.selectionIsSane()){
-        this.selection.drawSelection();
-        this.selection.fireSelectEvent();
+      if (!options || !options.mode) return;
+      if (selection.interval) clearInterval(selection.interval);
+
+      if (this.multitouches) {
+        selection.updateSelection();
+      } else
+      if (!options.pinchOnly) {
+        selection.setSelectionPos(selection.selection.second, pointer);
+      }
+      selection.clearSelection();
+
+      if(selection.selecting && selection.selectionIsSane()){
+        selection.drawSelection();
+        selection.fireSelectEvent();
         this.ignoreClick = true;
       }
     },
     'flotr:mousedown' : function (event) {
-      if (!this.options.selection || !this.options.selection.mode) return;
-      if (!this.options.selection.mode || (!isLeftClick(event) && _.isUndefined(event.touches))) return;
 
-      var pointer = this.getEventPosition(event);
-      this.selection.setSelectionPos(this.selection.selection.first, pointer);
+      var
+        options = this.options.selection,
+        selection = this.selection,
+        pointer = this.getEventPosition(event);
 
-      if (this.selection.interval) clearInterval(this.selection.interval);
+      if (!options || !options.mode) return;
+      if (!options.mode || (!isLeftClick(event) && _.isUndefined(event.touches))) return;
+      if (!options.pinchOnly) selection.setSelectionPos(selection.selection.first, pointer);
+      if (selection.interval) clearInterval(selection.interval);
 
       this.lastMousePos.pageX = null;
-      this.selection.selecting = false;
-      this.selection.interval = setInterval(
-        _.bind(this.selection.updateSelection, this),
-        1000/this.options.selection.fps
+      selection.selecting = false;
+      selection.interval = setInterval(
+        _.bind(selection.updateSelection, this),
+        1000 / options.fps
       );
     },
     'flotr:destroy' : function (event) {
@@ -74,15 +88,27 @@ Flotr.addPlugin('selection', {
   // TODO This isn't used.  Maybe it belongs in the draw area and fire select event methods?
   getArea: function() {
 
-    var s = this.selection.selection,
+    var
+      s = this.selection.selection,
+      a = this.axes,
       first = s.first,
-      second = s.second;
+      second = s.second,
+      x1, x2, y1, y2;
+
+    x1 = a.x.p2d(s.first.x);
+    x2 = a.x.p2d(s.second.x);
+    y1 = a.y.p2d(s.first.y);
+    y2 = a.y.p2d(s.second.y);
 
     return {
-      x1: Math.min(first.x, second.x),
-      x2: Math.max(first.x, second.x),
-      y1: Math.min(first.y, second.y),
-      y2: Math.max(first.y, second.y)
+      x1 : Math.min(x1, x2),
+      y1 : Math.min(y1, y2),
+      x2 : Math.max(x1, x2),
+      y2 : Math.max(y1, y2),
+      xfirst : x1,
+      xsecond : x2,
+      yfirst : y1,
+      ysecond : y2
     };
   },
 
@@ -94,24 +120,11 @@ Flotr.addPlugin('selection', {
    * Fires the 'flotr:select' event when the user made a selection.
    */
   fireSelectEvent: function(name){
-    var a = this.axes,
-        s = this.selection.selection,
-        x1, x2, y1, y2;
-
+    var
+      area = this.selection.getArea();
     name = name || 'select';
-
-    x1 = a.x.p2d(s.first.x);
-    x2 = a.x.p2d(s.second.x);
-    y1 = a.y.p2d(s.first.y);
-    y2 = a.y.p2d(s.second.y);
-
-    E.fire(this.el, 'flotr:'+name, [{
-      x1:Math.min(x1, x2), 
-      y1:Math.min(y1, y2), 
-      x2:Math.max(x1, x2), 
-      y2:Math.max(y1, y2),
-      xfirst:x1, xsecond:x2, yfirst:y1, ysecond:y2
-    }, this]);
+    area.selection = this.selection.selection;
+    E.fire(this.el, 'flotr:'+name, [area, this]);
   },
 
   /**
@@ -132,8 +145,8 @@ Flotr.addPlugin('selection', {
 
     s.first.y  = boundY((selX && !selY) ? 0 : (ya.max - area.y1) * vertScale, this);
     s.second.y = boundY((selX && !selY) ? this.plotHeight - 1: (ya.max - area.y2) * vertScale, this);
-    s.first.x  = boundX((selY && !selX) ? 0 : area.x1, this);
-    s.second.x = boundX((selY && !selX) ? this.plotWidth : area.x2, this);
+    s.first.x  = boundX((selY && !selX) ? 0 : (area.x1 - xa.min) * hozScale, this);
+    s.second.x = boundX((selY && !selX) ? this.plotWidth : (area.x2 - xa.min) * hozScale, this);
     
     this.selection.drawSelection();
     if (!preventEvent)
@@ -210,7 +223,16 @@ Flotr.addPlugin('selection', {
     if (!this.lastMousePos.pageX) return;
 
     this.selection.selecting = true;
-    this.selection.setSelectionPos(this.selection.selection.second, this.lastMousePos);
+
+    if (this.multitouches) {
+      this.selection.setSelectionPos(this.selection.selection.first,  this.getEventPosition(this.multitouches[0]));
+      this.selection.setSelectionPos(this.selection.selection.second,  this.getEventPosition(this.multitouches[1]));
+    } else
+    if (this.options.selection.pinchOnly) {
+      return;
+    } else {
+      this.selection.setSelectionPos(this.selection.selection.second, this.lastMousePos);
+    }
 
     this.selection.clearSelection();
     

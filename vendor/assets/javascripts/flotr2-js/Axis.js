@@ -16,8 +16,6 @@ function Axis (o) {
   this.datamax = -Number.MAX_VALUE;
 
   _.extend(this, o);
-
-  this._setTranslations();
 }
 
 
@@ -25,11 +23,38 @@ function Axis (o) {
 Axis.prototype = {
 
   setScale : function () {
-    var length = this.length;
-    if (this.options.scaling == LOGARITHMIC) {
-      this.scale = length / (log(this.max, this.options.base) - log(this.min, this.options.base));
+    var
+      length = this.length,
+      max = this.max,
+      min = this.min,
+      offset = this.offset,
+      orientation = this.orientation,
+      options = this.options,
+      logarithmic = options.scaling === LOGARITHMIC,
+      scale;
+
+    if (logarithmic) {
+      scale = length / (log(max, options.base) - log(min, options.base));
     } else {
-      this.scale = length / (this.max - this.min);
+      scale = length / (max - min);
+    }
+    this.scale = scale;
+
+    // Logarithmic?
+    if (logarithmic) {
+      this.d2p = function (dataValue) {
+        return offset + orientation * (log(dataValue, options.base) - log(min, options.base)) * scale;
+      };
+      this.p2d = function (pointValue) {
+        return exp((offset + orientation * pointValue) / scale + log(min, options.base), options.base);
+      };
+    } else {
+      this.d2p = function (dataValue) {
+        return offset + orientation * (dataValue - min) * scale;
+      };
+      this.p2d = function (pointValue) {
+        return (offset + orientation * pointValue) / scale + min;
+      };
     }
   },
 
@@ -53,6 +78,10 @@ Axis.prototype = {
         this._calculateTicks();
       }
     }
+
+    // Ticks to strings
+    _.each(this.ticks, function (tick) { tick.label += ''; });
+    _.each(this.minorTicks, function (tick) { tick.label += ''; });
   },
 
   /**
@@ -178,28 +207,7 @@ Axis.prototype = {
   },
 
   _calculateTimeTicks : function () {
-    var axis = this,
-        tu = Flotr.Date.timeUnits,
-        spec = Flotr.Date.spec,
-        delta = (axis.max - axis.min) / axis.options.noTicks,
-        size, unit, i;
-
-    for (i = 0; i < spec.length - 1; ++i) {
-      var d = spec[i][0] * tu[spec[i][1]];
-      if (delta < (d + spec[i+1][0] * tu[spec[i+1][1]]) / 2 && d >= axis.tickSize)
-        break;
-    }
-    size = spec[i][0];
-    unit = spec[i][1];
-    
-    // special-case the possibility of several years
-    if (unit == "year") {
-      size = Flotr.getTickSize(axis.options.noTicks*tu.year, axis.min, axis.max, 0);
-    }
-    
-    axis.tickSize = size;
-    axis.tickUnit = unit;
-    axis.ticks = Flotr.Date.generator(axis);
+    this.ticks = Flotr.Date.generator(this);
   },
 
   _calculateLogTicks : function () {
@@ -268,11 +276,6 @@ Axis.prototype = {
       }
     }
 
-  },
-
-  _setTranslations : function (logarithmic) {
-    this.d2p = (logarithmic ? d2pLog : d2p);
-    this.p2d = (logarithmic ? p2dLog : p2d);
   }
 };
 
@@ -292,21 +295,6 @@ _.extend(Axis, {
 
 // Helper Methods
 
-function d2p (dataValue) {
-  return this.offset + this.orientation * (dataValue - this.min) * this.scale;
-}
-
-function p2d (pointValue) {
-  return (this.offset + this.orientation * pointValue) / this.scale + this.min;
-}
-
-function d2pLog (dataValue) {
-  return this.offset + this.orientation * (log(dataValue, this.options.base) - log(this.min, this.options.base)) * this.scale;
-}
-
-function p2dLog (pointValue) {
-  return exp((this.offset + this.orientation * pointValue) / this.scale + log(this.min, this.options.base), this.options.base);
-}
 
 function log (value, base) {
   value = Math.log(Math.max(value, Number.MIN_VALUE));

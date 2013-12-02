@@ -1,5 +1,6 @@
-/** Pie **/
 /**
+ * Pie
+ *
  * Formats the pies labels.
  * @param {Object} slice - Slice object
  * @return {String} Formatted pie label string
@@ -26,26 +27,26 @@ Flotr.addType('pie', {
     labelFormatter: Flotr.defaultPieLabelFormatter,
     pie3D: false,          // => whether to draw the pie in 3 dimenstions or not (ineffective) 
     pie3DviewAngle: (Math.PI/2 * 0.8),
-    pie3DspliceThickness: 20
+    pie3DspliceThickness: 20,
+    epsilon: 0.1           // => how close do you have to get to hit empty slice
   },
 
   draw : function (options) {
 
     // TODO 3D charts what?
-
     var
       data          = options.data,
       context       = options.context,
-      canvas        = context.canvas,
       lineWidth     = options.lineWidth,
       shadowSize    = options.shadowSize,
       sizeRatio     = options.sizeRatio,
       height        = options.height,
+      width         = options.width,
       explode       = options.explode,
       color         = options.color,
       fill          = options.fill,
       fillStyle     = options.fillStyle,
-      radius        = Math.min(canvas.width, canvas.height) * sizeRatio / 2,
+      radius        = Math.min(width, height) * sizeRatio / 2,
       value         = data[0][1],
       html          = [],
       vScale        = 1,//Math.cos(series.pie.viewAngle);
@@ -55,15 +56,16 @@ Flotr.addType('pie', {
       bisection     = startAngle + measure / 2,
       label         = options.labelFormatter(this.total, value),
       //plotTickness  = Math.sin(series.pie.viewAngle)*series.pie.spliceThickness / vScale;
-      alignRight    = (Math.cos(bisection) < 0),
-      alignTop      = (Math.sin(bisection) > 0),
       explodeCoeff  = explode + radius + 4,
+      distX         = Math.cos(bisection) * explodeCoeff,
+      distY         = Math.sin(bisection) * explodeCoeff,
+      textAlign     = distX < 0 ? 'right' : 'left',
+      textBaseline  = distY > 0 ? 'top' : 'bottom',
       style,
-      x, y,
-      distX, distY;
+      x, y;
     
     context.save();
-    context.translate(options.width / 2, options.height / 2);
+    context.translate(width / 2, height / 2);
     context.scale(1, vScale);
 
     x = Math.cos(bisection) * explode;
@@ -87,8 +89,6 @@ Flotr.addType('pie', {
     context.strokeStyle = color;
     context.stroke();
 
-    distX = Math.cos(bisection) * explodeCoeff;
-    distY = Math.sin(bisection) * explodeCoeff;
     style = {
       size : options.fontSize * 1.2,
       color : options.fontColor,
@@ -97,18 +97,13 @@ Flotr.addType('pie', {
 
     if (label) {
       if (options.htmlText || !options.textEnabled) {
-        // TODO HTML text is broken here.
-        var yAlignDist = textAlignTop ? (distY - 5) : (height - distY + 5),
-            divStyle = 'position:absolute;' + (textAlignTop ? 'top' : 'bottom') + ':' + yAlignDist + 'px;'; //@todo: change
-        if (textAlignRight)
-          divStyle += 'right:'+(this.canvasWidth - distX)+'px;text-align:right;';
-        else 
-          divStyle += 'left:'+distX+'px;text-align:left;';
+        divStyle = 'position:absolute;' + textBaseline + ':' + (height / 2 + (textBaseline === 'top' ? distY : -distY)) + 'px;';
+        divStyle += textAlign + ':' + (width / 2 + (textAlign === 'right' ? -distX : distX)) + 'px;';
         html.push('<div style="', divStyle, '" class="flotr-grid-label">', label, '</div>');
       }
       else {
-        style.textAlign = alignRight ? 'right' : 'left';
-        style.textBaseline = alignTop ? 'top' : 'bottom';
+        style.textAlign = textAlign;
+        style.textBaseline = textBaseline;
         Flotr.drawText(context, label, distX, distY, style);
       }
     }
@@ -116,7 +111,7 @@ Flotr.addType('pie', {
     if (options.htmlText || !options.textEnabled) {
       var div = Flotr.DOM.node('<div style="color:' + options.fontColor + '" class="flotr-labels"></div>');
       Flotr.DOM.insert(div, html.join(''));
-      Flotr.DOM.insert(this.el, div);
+      Flotr.DOM.insert(options.element, div);
     }
     
     context.restore();
@@ -125,7 +120,7 @@ Flotr.addType('pie', {
     this.startAngle = endAngle;
     this.slices = this.slices || [];
     this.slices.push({
-      radius : Math.min(canvas.width, canvas.height) * sizeRatio / 2,
+      radius : radius,
       x : x,
       y : y,
       explode : explode,
@@ -156,7 +151,8 @@ Flotr.addType('pie', {
       circle    = Math.PI * 2,
       explode   = slice.explode || options.explode,
       start     = slice.start % circle,
-      end       = slice.end % circle;
+      end       = slice.end % circle,
+      epsilon   = options.epsilon;
 
     if (x < 0) {
       theta += Math.PI;
@@ -165,10 +161,14 @@ Flotr.addType('pie', {
     }
 
     if (r < slice.radius + explode && r > explode) {
-      if ((start > end && (theta < end || theta > start)) ||
-        (theta > start && theta < end)) {
-
-        // TODO Decouple this from hit plugin (chart shouldn't know what n means)
+      if (
+          (theta > start && theta < end) || // Normal Slice
+          (start > end && (theta < end || theta > start)) || // First slice
+          // TODO: Document the two cases at the end:
+          (start === end && ((slice.start === slice.end && Math.abs(theta - start) < epsilon) || (slice.start !== slice.end && Math.abs(theta-start) > epsilon)))
+         ) {
+          
+          // TODO Decouple this from hit plugin (chart shouldn't know what n means)
          n.x = data[0];
          n.y = data[1];
          n.sAngle = start;

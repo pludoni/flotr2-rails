@@ -13,6 +13,7 @@ Flotr.defaultOptions = {
   fontSize: 7.5,           // => canvas' text font size
   resolution: 1,           // => resolution of the graph, to have printer-friendly graphs !
   parseFloat: true,        // => whether to preprocess data for floats (ie. if input is string)
+  preventDefault: true,    // => preventDefault by default for mobile events.  Turn off to enable scroll.
   xaxis: {
     ticks: null,           // => format: either [1, 3] or [[1, 'a'], 3]
     minorTicks: null,      // => format: either [1, 3] or [[1, 'a'], 3]
@@ -32,6 +33,8 @@ Flotr.defaultOptions = {
     color: null,           // => color of the ticks
     mode: 'normal',        // => can be 'time' or 'normal'
     timeFormat: null,
+    timeMode:'UTC',        // => For UTC time ('local' for local time).
+    timeUnit:'millisecond',// => Unit for time (millisecond, second, minute, hour, day, month, year)
     scaling: 'linear',     // => Scaling, can be 'linear' or 'logarithmic'
     base: Math.E,
     titleAlign: 'center',
@@ -81,7 +84,7 @@ Flotr.defaultOptions = {
   mouse: {
     track: false,          // => true to track the mouse, no tracking otherwise
     trackAll: false,
-    position: 'se',        // => position of the value box (default south-east)
+    position: 'se',        // => position of the value box (default south-east).  False disables.
     relative: false,       // => next to the mouse cursor
     trackFormatter: Flotr.defaultTrackFormatter, // => formats the values in the value box
     margin: 5,             // => margin in pixels of the valuebox

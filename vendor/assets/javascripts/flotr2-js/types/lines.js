@@ -65,6 +65,7 @@ Flotr.addType('lines', {
       prevx     = null,
       prevy     = null,
       zero      = yScale(0),
+      start     = null,
       x1, x2, y1, y2, stack1, stack2, i;
       
     if (length < 1) return;
@@ -74,7 +75,18 @@ Flotr.addType('lines', {
     for (i = 0; i < length; ++i) {
 
       // To allow empty values
-      if (data[i][1] === null || data[i+1][1] === null) continue;
+      if (data[i][1] === null || data[i+1][1] === null) {
+        if (options.fill) {
+          if (i > 0 && data[i][1] !== null) {
+            context.stroke();
+            fill();
+            start = null;
+            context.closePath();
+            context.beginPath();
+          }
+        }
+        continue;
+      }
 
       // Zero is infinity for log scales
       // TODO handle zero for logarithmic
@@ -83,23 +95,21 @@ Flotr.addType('lines', {
       
       x1 = xScale(data[i][0]);
       x2 = xScale(data[i+1][0]);
+
+      if (start === null) start = data[i];
       
       if (stack) {
-
         stack1 = stack.values[data[i][0]] || 0;
         stack2 = stack.values[data[i+1][0]] || stack.values[data[i][0]] || 0;
-
         y1 = yScale(data[i][1] + stack1);
         y2 = yScale(data[i+1][1] + stack2);
-        
-        if(incStack){
-          stack.values[data[i][0]] = data[i][1]+stack1;
-            
-          if(i == length-1)
-            stack.values[data[i+1][0]] = data[i+1][1]+stack2;
+        if (incStack) {
+          stack.values[data[i][0]] = data[i][1] + stack1;
+          if (i == length-1) {
+            stack.values[data[i+1][0]] = data[i+1][1] + stack2;
+          }
         }
-      }
-      else{
+      } else {
         y1 = yScale(data[i][1]);
         y2 = yScale(data[i+1][1]);
       }
@@ -111,8 +121,9 @@ Flotr.addType('lines', {
         (x1 > width && x2 > width)
       ) continue;
 
-      if((prevx != x1) || (prevy != y1 + shadowOffset))
+      if ((prevx != x1) || (prevy != y1 + shadowOffset)) {
         context.moveTo(x1, y1 + shadowOffset);
+      }
       
       prevx = x2;
       prevy = y2 + shadowOffset;
@@ -126,16 +137,20 @@ Flotr.addType('lines', {
     
     if (!options.fill || options.fill && !options.fillBorder) context.stroke();
 
-    // TODO stacked lines
-    if(!shadowOffset && options.fill){
-      x1 = xScale(data[0][0]);
-      context.fillStyle = options.fillStyle;
-      context.lineTo(x2, zero);
-      context.lineTo(x1, zero);
-      context.lineTo(x1, yScale(data[0][1]));
-      context.fill();
-      if (options.fillBorder) {
-        context.stroke();
+    fill();
+
+    function fill () {
+      // TODO stacked lines
+      if(!shadowOffset && options.fill && start){
+        x1 = xScale(start[0]);
+        context.fillStyle = options.fillStyle;
+        context.lineTo(x2, zero);
+        context.lineTo(x1, zero);
+        context.lineTo(x1, yScale(start[1]));
+        context.fill();
+        if (options.fillBorder) {
+          context.stroke();
+        }
       }
     }
 
@@ -210,7 +225,7 @@ Flotr.addType('lines', {
           mouse = args[0],
           length = data.length,
           n = args[1],
-          x = mouse.x,
+          x = options.xInverse(mouse.relX),
           relY = mouse.relY,
           i;
 

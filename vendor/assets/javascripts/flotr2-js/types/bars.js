@@ -11,7 +11,8 @@ Flotr.addType('bars', {
     horizontal: false,     // => horizontal bars (x and y inverted)
     stacked: false,        // => stacked bar charts
     centered: true,        // => center the bars to their x axis value
-    topPadding: 0.1        // => top padding in percent
+    topPadding: 0.1,       // => top padding in percent
+    grouped: false         // => groups bars together which share x value, hit not supported.
   },
 
   stack : { 
@@ -24,6 +25,8 @@ Flotr.addType('bars', {
   draw : function (options) {
     var
       context = options.context;
+
+    this.current += 1;
 
     context.save();
     context.lineJoin = 'miter';
@@ -95,6 +98,14 @@ Flotr.addType('bars', {
       stackOffset   = 0,
       stackValue, left, right, top, bottom;
 
+    if (options.grouped) {
+      this.current / this.groups;
+      xValue = xValue - bisection;
+      barWidth = barWidth / this.groups;
+      bisection = barWidth / 2;
+      xValue = xValue + barWidth * this.current - bisection;
+    }
+
     // Stacked bars
     if (stack) {
       stackValue          = yValue > 0 ? stack.positive : stack.negative;
@@ -131,16 +142,27 @@ Flotr.addType('bars', {
       args = options.args,
       mouse = args[0],
       n = args[1],
-      x = mouse.x,
-      y = mouse.y,
+      x = options.xInverse(mouse.relX),
+      y = options.yInverse(mouse.relY),
       hitGeometry = this.getBarGeometry(x, y, options),
       width = hitGeometry.width / 2,
       left = hitGeometry.left,
+      height = hitGeometry.y,
       geometry, i;
 
     for (i = data.length; i--;) {
       geometry = this.getBarGeometry(data[i][0], data[i][1], options);
-      if (geometry.y > hitGeometry.y && Math.abs(left - geometry.left) < width) {
+      if (
+        // Height:
+        (
+          // Positive Bars:
+          (height > 0 && height < geometry.y) ||
+          // Negative Bars:
+          (height < 0 && height > geometry.y)
+        ) &&
+        // Width:
+        (Math.abs(left - geometry.left) < width)
+      ) {
         n.x = data[i][0];
         n.y = data[i][1];
         n.index = i;
@@ -205,6 +227,8 @@ Flotr.addType('bars', {
 
   extendXRange : function (axis, data, options, bars) {
     this._extendRange(axis, data, options, bars);
+    this.groups = (this.groups + 1) || 1;
+    this.current = 0;
   },
 
   extendYRange : function (axis, data, options, bars) {
